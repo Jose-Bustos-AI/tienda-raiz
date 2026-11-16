@@ -1,6 +1,8 @@
 // Catálogo de la tienda de ejemplo Raíz. Precios en euros.
 export const ENVIO_GRATIS = 45;
 export const COSTE_ENVIO = { estandar: 4.95, expres: 7.95 };
+// Códigos de descuento: parte del subtotal que se descuenta.
+export const CUPONES = { BIENVENIDA10: 0.1 };
 
 export const CATEGORIAS = [
   { id: 'todo', nombre: 'Todo' },

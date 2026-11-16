@@ -11,7 +11,9 @@ Tienda de plantas de interior programada desde cero, con un recomendador que te 
 - Ficha de cuidados de cada planta y calendario de riego de las próximas cuatro semanas
 - Al terminar el pedido, el calendario de riego se puede añadir al móvil con un archivo `.ics` generado en el navegador
 - Tamaños y macetas que suman al precio, filtros combinables (aptas para mascotas, muy fáciles, poca luz), favoritos y buscador
+- Carrito con código de descuento BIENVENIDA10 y sugerencia del kit de cuidado
 - Pago de demostración en tres pasos con opción de regalo y mensaje
+- Preguntas frecuentes desplegables en la portada
 - Respeta a quien pide menos animación en su dispositivo
 - Alojada en Vercel
 

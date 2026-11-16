@@ -1,4 +1,4 @@
-import { PRODUCTOS, CATEGORIAS, FILTROS, LUZ, DIFICULTAD, MACETAS, ENVIO_GRATIS, COSTE_ENVIO, buscar, desde, euros, recomendar } from './datos.js';
+import { PRODUCTOS, CATEGORIAS, FILTROS, LUZ, DIFICULTAD, MACETAS, ENVIO_GRATIS, COSTE_ENVIO, CUPONES, buscar, desde, euros, recomendar } from './datos.js';
 import { plantaSVG, crecer, habitacionSVG, nivelLuz, moverMaceta } from './planta.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -12,10 +12,15 @@ const leer = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; 
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
 let carrito = leer('raiz-carrito', []);
 let favoritos = leer('raiz-favoritos', []);
+let cupon = leer('raiz-cupon', null);
+if (!CUPONES[cupon]) cupon = null;
 
 const categoria = (id) => CATEGORIAS.find((c) => c.id === id)?.nombre || '';
 const subtotal = () => carrito.reduce((n, l) => n + l.precio * l.cantidad, 0);
 const unidades = () => carrito.reduce((n, l) => n + l.cantidad, 0);
+const descuento = () => (cupon ? Math.round(subtotal() * CUPONES[cupon] * 100) / 100 : 0);
+// Importe que cuenta para el envío gratis: lo que se paga por los productos.
+const base = () => subtotal() - descuento();
 const maceta = (id) => MACETAS.find((m) => m.id === id);
 
 function tostada(texto) {
@@ -33,7 +38,7 @@ function burbuja(id, n) {
 function actualizarContadores() { burbuja('#num-carrito', unidades()); burbuja('#num-fav', favoritos.length); }
 
 /* ---------- Carrito ---------- */
-function añadir(id, tamanoId, macetaId = 'vivero') {
+function añadir(id, tamanoId, macetaId = 'vivero', abrir = true) {
   const p = buscar(id);
   const t = p.tamanos.find((x) => x.id === tamanoId) || p.tamanos[0];
   const m = p.sinMaceta ? null : maceta(macetaId);
@@ -45,7 +50,7 @@ function añadir(id, tamanoId, macetaId = 'vivero') {
   guardar('raiz-carrito', carrito);
   actualizarContadores();
   pintarCajon();
-  abrirCajon();
+  if (abrir) abrirCajon();
 }
 function cambiar(i, delta) {
   carrito[i].cantidad += delta;
@@ -55,8 +60,8 @@ function cambiar(i, delta) {
   pintarCajon();
 }
 function barraEnvio() {
-  const falta = ENVIO_GRATIS - subtotal();
-  const pct = Math.min(subtotal() / ENVIO_GRATIS, 1) * 100;
+  const falta = ENVIO_GRATIS - base();
+  const pct = Math.min(base() / ENVIO_GRATIS, 1) * 100;
   const texto = carrito.length === 0 ? `Envío gratis a partir de ${euros(ENVIO_GRATIS)}`
     : falta > 0 ? `Te faltan <b>${euros(falta)}</b> para el envío gratis` : '<b>Tienes el envío gratis</b>';
   return `${texto}<div class="envio__barra"><span style="width:${pct}%"></span></div>`;
@@ -85,9 +90,34 @@ function pintarCajon() {
     $('#cajon-pie').innerHTML = '<a class="btn btn--ancho" href="#/encuentra" data-cerrar>Encontrar mi planta</a>';
     return;
   }
-  $('#lineas').innerHTML = carrito.map((l, i) => lineaHTML(l, i)).join('');
-  $('#cajon-pie').innerHTML = `<div class="total"><span>Subtotal</span><span>${euros(subtotal())}</span></div>
+  $('#lineas').innerHTML = carrito.map((l, i) => lineaHTML(l, i)).join('') + sugerenciaHTML();
+  $('#cajon-pie').innerHTML = `${cuponHTML()}
+    <dl class="cuentas"><dt>Subtotal</dt><dd>${euros(subtotal())}</dd>${descuento() ? `<dt>Descuento</dt><dd>−${euros(descuento())}</dd>` : ''}</dl>
+    <div class="total"><span>Total sin envío</span><span>${euros(base())}</span></div>
     <a class="btn btn--ancho" href="#/pago" data-cerrar>Finalizar compra</a>`;
+}
+
+/* Con una planta en el carrito y sin kit de cuidado, se propone el kit. */
+function sugerenciaHTML() {
+  const kit = buscar('kit');
+  const hayPlanta = carrito.some((l) => buscar(l.id).cuidados);
+  if (!kit || !hayPlanta || carrito.some((l) => l.id === 'kit')) return '';
+  return `<div class="sugerencia">
+    <img src="${kit.imagen}" alt="">
+    <div><small>Para cuidarla bien</small><b>${esc(kit.nombre)}</b><span>${euros(desde(kit))}</span></div>
+    <button class="btn btn--hueco" type="button" data-sugerir="kit">Añadir</button>
+  </div>`;
+}
+
+function cuponHTML() {
+  if (cupon) {
+    return `<div class="cupon cupon--puesto"><span>Código <b>${esc(cupon)}</b>: −${Math.round(CUPONES[cupon] * 100)} %</span><button class="quitar" type="button" data-quitar-cupon>Quitar</button></div>`;
+  }
+  return `<form class="cupon" data-cupon novalidate>
+    <label class="visual-oculto" for="campo-cupon">Código de descuento</label>
+    <input id="campo-cupon" name="cupon" type="text" placeholder="Código de descuento" autocomplete="off" autocapitalize="characters">
+    <button class="btn btn--hueco" type="submit">Aplicar</button>
+  </form><p class="cupon__error" id="cupon-error" role="alert"></p>`;
 }
 let focoPrevio = null;
 function abrirCajon() {
@@ -108,7 +138,25 @@ $('#cajon').addEventListener('click', (e) => {
   if (c) return cambiar(+c.dataset.cant, +c.dataset.delta);
   const q = e.target.closest('[data-quitar]');
   if (q) return cambiar(+q.dataset.quitar, -999);
+  const sug = e.target.closest('[data-sugerir]');
+  if (sug) { const p = buscar(sug.dataset.sugerir); añadir(p.id, p.tamanos[0].id, 'vivero', false); tostada(`${p.nombre} añadido al carrito`); return; }
+  if (e.target.closest('[data-quitar-cupon]')) { cupon = null; guardar('raiz-cupon', cupon); pintarCajon(); return; }
   if (e.target.closest('[data-cerrar]')) cerrarCajon();
+});
+$('#cajon').addEventListener('submit', (e) => {
+  const f = e.target.closest('[data-cupon]');
+  if (!f) return;
+  e.preventDefault();
+  const codigo = f.cupon.value.trim().toUpperCase();
+  if (CUPONES[codigo]) {
+    cupon = codigo;
+    guardar('raiz-cupon', cupon);
+    pintarCajon();
+    tostada(`Código aplicado: ${Math.round(CUPONES[codigo] * 100)} % de descuento`);
+  } else {
+    $('#cupon-error').textContent = codigo ? 'Ese código no existe. Prueba con BIENVENIDA10.' : 'Escribe un código.';
+    f.cupon.focus();
+  }
 });
 $('#btn-carrito').addEventListener('click', () => { pintarCajon(); abrirCajon(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#cajon').classList.contains('abierto')) cerrarCajon(); });
@@ -348,7 +396,7 @@ function vistaInicio() {
       </div>
     </div>
   </section>
-  <div class="cinta" aria-hidden="true"><div class="cinta__pista">${Array(2).fill('<span>Recomendador de plantas</span><span>Garantía de 30 días</span><span>Envío gratis desde 45 €</span><span>Calendario de riego con cada pedido</span><span>Plantas seguras para mascotas</span>').join('')}</div></div>
+  <div class="cinta" aria-hidden="true"><div class="cinta__pista">${Array(2).fill('<span>Recomendador de plantas</span><span>Garantía de 30 días</span><span>10 % con el código BIENVENIDA10</span><span>Envío gratis desde 45 €</span><span>Calendario de riego con cada pedido</span><span>Plantas seguras para mascotas</span>').join('')}</div></div>
   ${htmlTest(false)}
   <section class="bloque envoltura">
     <div class="bloque__cab"><div><span class="etiqueta">Las más queridas</span><h2 class="bloque__titulo">Plantas para <em>empezar bien</em></h2></div><a class="btn btn--hueco" href="#/catalogo/todo">Ver todas</a></div>
@@ -371,6 +419,18 @@ function vistaInicio() {
       <span class="etiqueta">El vivero</span>
       <h2 class="bloque__titulo">De nuestras manos <em>a tu salón.</em></h2>
       <ol class="pasos-vivero"><li><b>La elegimos</b><span>Escogemos tu planta una a una, la más sana del invernadero.</span></li><li><b>La preparamos</b><span>La trasplantamos a la maceta que elijas y la regamos justo antes de salir.</span></li><li><b>Viaja segura</b><span>En una caja con sujeción que llega en 48 horas, sin una hoja rota.</span></li></ol>
+    </div>
+  </section>
+  <section class="bloque envoltura" style="padding-top:0">
+    <div class="faq">
+      <div><span class="etiqueta">Antes de pedir</span><h2 class="bloque__titulo">Preguntas <em>frecuentes</em></h2></div>
+      <div>
+        <details class="acordeon" open><summary>¿Y si se me muere la planta?</summary><p>Tienes 30 días de garantía: si no se adapta a tu casa en un mes, te mandamos otra sin preguntas. Y cada ficha dice la luz y el riego que necesita para que no llegue a pasar.</p></details>
+        <details class="acordeon"><summary>No sé cuál elegir, ¿me ayudáis?</summary><p>Responde las cinco preguntas del recomendador (luz, riego, mascotas, experiencia y tamaño) y te propone las plantas que mejor encajan en tu casa.</p></details>
+        <details class="acordeon"><summary>¿Cómo viajan las plantas?</summary><p>En una caja con sujeción para la maceta y las hojas. El envío estándar llega en 48-72 h por ${euros(COSTE_ENVIO.estandar)}, gratis desde ${euros(ENVIO_GRATIS)}; el exprés llega en 24 h por ${euros(COSTE_ENVIO.expres)}.</p></details>
+        <details class="acordeon"><summary>¿Hay algún descuento?</summary><p>Sí: con el código BIENVENIDA10 tienes un 10 % en tu primer pedido. Se escribe en el carrito.</p></details>
+        <details class="acordeon"><summary>¿Es una tienda de verdad?</summary><p>No. Es una tienda de demostración hecha por Dania360: la marca y los productos son inventados y el pago es de prueba, no se cobra nada.</p></details>
+      </div>
     </div>
   </section>`;
   activarTest();
@@ -491,10 +551,10 @@ function vistaPago() {
   let metodo = 'estandar';
   let regalo = false;
   let mensaje = '';
-  const gastos = () => (metodo === 'expres' ? COSTE_ENVIO.expres : subtotal() >= ENVIO_GRATIS ? 0 : COSTE_ENVIO.estandar);
+  const gastos = () => (metodo === 'expres' ? COSTE_ENVIO.expres : base() >= ENVIO_GRATIS ? 0 : COSTE_ENVIO.estandar);
   const resumen = () => `<aside class="caja resumen"><h2>Resumen</h2>${carrito.map((l, i) => lineaHTML(l, i, false)).join('')}
-    <dl><dt>Subtotal</dt><dd>${euros(subtotal())}</dd><dt>Envío</dt><dd>${gastos() === 0 ? 'Gratis' : euros(gastos())}</dd>${regalo ? '<dt>Tarjeta de regalo</dt><dd>Gratis</dd>' : ''}</dl>
-    <div class="total"><span>Total</span><span>${euros(subtotal() + gastos())}</span></div></aside>`;
+    <dl><dt>Subtotal</dt><dd>${euros(subtotal())}</dd>${descuento() ? `<dt>Descuento (${esc(cupon)})</dt><dd>−${euros(descuento())}</dd>` : ''}<dt>Envío</dt><dd>${gastos() === 0 ? 'Gratis' : euros(gastos())}</dd>${regalo ? '<dt>Tarjeta de regalo</dt><dd>Gratis</dd>' : ''}</dl>
+    <div class="total"><span>Total</span><span>${euros(base() + gastos())}</span></div></aside>`;
   const campo = (id, etiqueta, tipo = 'text', ancho = false, extra = '') => `<label class="campo ${ancho ? 'campo--ancho' : ''}">${etiqueta}<input id="${id}" name="${id}" type="${tipo}" value="${esc(datos[id] || '')}" ${extra} required></label>`;
   const pintar = () => {
     const etapas = ['Envío', 'Entrega', 'Pago'];
@@ -506,7 +566,7 @@ function vistaPago() {
         <div class="botones-pago"><a class="btn btn--hueco" href="#/catalogo/todo">Seguir comprando</a><button class="btn" type="submit">Continuar</button></div></form>`;
     } else if (paso === 2) {
       cuerpo = `<form class="caja" id="form-paso"><h2>¿Cómo la quieres?</h2>
-        <label class="opcion"><input type="radio" name="metodo" value="estandar" ${metodo === 'estandar' ? 'checked' : ''}><span>Estándar<small>Entrega en 48-72 h en caja protegida</small></span><b>${subtotal() >= ENVIO_GRATIS ? 'Gratis' : euros(COSTE_ENVIO.estandar)}</b></label>
+        <label class="opcion"><input type="radio" name="metodo" value="estandar" ${metodo === 'estandar' ? 'checked' : ''}><span>Estándar<small>Entrega en 48-72 h en caja protegida</small></span><b>${base() >= ENVIO_GRATIS ? 'Gratis' : euros(COSTE_ENVIO.estandar)}</b></label>
         <label class="opcion"><input type="radio" name="metodo" value="expres" ${metodo === 'expres' ? 'checked' : ''}><span>Exprés<small>Entrega en 24 h</small></span><b>${euros(COSTE_ENVIO.expres)}</b></label>
         <label class="opcion"><input type="checkbox" name="regalo" ${regalo ? 'checked' : ''}><span>Es para regalar<small>Sin precio en el paquete y con una tarjeta escrita a mano</small></span><b>Gratis</b></label>
         ${regalo ? `<label class="campo campo--ancho mensaje-regalo">Mensaje para la tarjeta<textarea id="mensaje" maxlength="140" rows="3" placeholder="Para que llenes tu casa de verde">${esc(mensaje)}</textarea><small><span id="quedan">${140 - mensaje.length}</span> caracteres libres</small></label>` : ''}
@@ -516,7 +576,7 @@ function vistaPago() {
         <div class="nota-prueba">Pago de demostración: no se pide tarjeta y no se cobra nada. Al confirmar verás cómo termina un pedido real.</div>
         <label class="opcion"><input type="radio" name="pago" value="demo" checked><span>Pago de prueba<small>Simula un pago con tarjeta aceptado</small></span></label>
         <p class="pago__envio">Enviamos a <b>${esc(datos.nombre)}</b>, ${esc(datos.direccion)}, ${esc(datos.cp)} ${esc(datos.ciudad)}.${regalo && mensaje ? ` Con la tarjeta: "${esc(mensaje)}".` : ''}</p>
-        <div class="botones-pago"><button class="btn btn--hueco" type="button" data-atras>Atrás</button><button class="btn" type="submit">Pagar ${euros(subtotal() + gastos())}</button></div></form>`;
+        <div class="botones-pago"><button class="btn btn--hueco" type="button" data-atras>Atrás</button><button class="btn" type="submit">Pagar ${euros(base() + gastos())}</button></div></form>`;
     }
     app.innerHTML = `<div class="envoltura"><section class="pago"><div>
       <ol class="pasos">${etapas.map((e, i) => `<li class="${i + 1 === paso ? 'activo' : i + 1 < paso ? 'hecho' : ''}">${i + 1}. ${e}</li>`).join('')}</ol>
@@ -541,7 +601,7 @@ function vistaPago() {
         if (!ok) { tostada('Revisa los campos marcados en rojo'); f.querySelector('[aria-invalid=true]')?.focus(); return; }
         guardar('raiz-envio', datos);
       }
-      if (paso === 3) return confirmar(subtotal() + gastos(), regalo ? mensaje.trim() : '');
+      if (paso === 3) return confirmar(base() + gastos(), regalo ? mensaje.trim() : '');
       paso += 1;
       pintar();
     });
@@ -555,6 +615,8 @@ function confirmar(total, mensaje) {
   const plantas = [...new Set(carrito.map((l) => l.id))].filter((id) => buscar(id).cuidados);
   carrito = [];
   guardar('raiz-carrito', carrito);
+  cupon = null;
+  guardar('raiz-cupon', cupon);
   actualizarContadores();
   sessionStorage.setItem('raiz-pedido', JSON.stringify({ numero, total, plantas, mensaje }));
   location.hash = '#/gracias';
