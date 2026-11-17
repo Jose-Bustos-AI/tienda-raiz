@@ -52,7 +52,7 @@ button { cursor: pointer; }
 .aviso a { font-weight: 700; }
 
 /* ---------- Cabecera ---------- */
-.cab { position: sticky; top: 0; z-index: 40; background: rgba(251, 248, 241, .9); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid transparent; transition: border-color .3s, box-shadow .3s; }
+.cab { position: sticky; top: 0; z-index: 40; background: rgba(251, 248, 241, .97); border-bottom: 1px solid transparent; transition: border-color .3s, box-shadow .3s; }
 .cab.on { border-color: var(--linea); box-shadow: 0 10px 30px -22px rgba(31, 58, 43, .5); }
 .cab__in { width: min(var(--ancho), 100% - 40px); margin-inline: auto; display: flex; align-items: center; gap: 30px; height: var(--cab-alto); }
 .logo { display: inline-flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 30px; font-weight: 600; font-style: italic; color: var(--verde); text-decoration: none; line-height: 1; }
@@ -203,7 +203,8 @@ em.portada__l { color: var(--terracota); animation-delay: .15s; }
 /* El salón en 3D del recomendador */
 .sala { position: relative; width: 100%; aspect-ratio: 5 / 4; }
 .sala::before { content: ''; position: absolute; inset: 4% 2% 0; border-radius: 50%; background: radial-gradient(ellipse at 50% 60%, rgba(255, 226, 160, .2), transparent 65%); pointer-events: none; }
-.sala__lienzo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.sala__lienzo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; opacity: 0; transition: opacity .6s; }
+.sala__lienzo.lista { opacity: 1; }
 .sala__lienzo.arrastrable { cursor: grab; touch-action: none; }
 .sala__lienzo.arrastrable:active { cursor: grabbing; }
 .sala__chapa { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 1px; padding: 8px 16px 9px; border-radius: 16px; background: rgba(251, 248, 241, .96); color: var(--verde); box-shadow: 0 14px 30px -14px rgba(0, 0, 0, .6); pointer-events: none; white-space: nowrap; opacity: 0; transition: opacity .35s; will-change: transform; }

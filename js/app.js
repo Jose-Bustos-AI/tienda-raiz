@@ -273,7 +273,7 @@ function limpiar3D() {
   hero3d?.destruir(); hero3d = null;
 }
 
-function activarTest() {
+function activarTest(antes) {
   const raiz = $('#test');
   if (!raiz) return;
   const svg = $('#test-planta svg');
@@ -294,13 +294,8 @@ function activarTest() {
     sala.luz(r.metros, r.orientacion, r.luz, r.z);
     sala.estado(paso, r);
   };
-  // En la portada no se monta hasta que el recomendador se acerca a la pantalla
-  const cerca = new Promise((listo) => {
-    if (!('IntersectionObserver' in window)) return listo();
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); listo(); } }, { rootMargin: '900px 0px' });
-    io.observe(raiz);
-  });
-  cerca.then(() => import('./jardin3d.js')).then(({ Habitacion3D }) => {
+  // En la portada se monta después de la planta del Hero, a trozos y en los ratos libres del navegador
+    Promise.resolve(antes).then(() => import('./jardin3d.js')).then(({ Habitacion3D }) => {
     if (!raiz.isConnected) return;
     $('#sala').hidden = false;
     raiz.classList.add('con-3d');
@@ -308,6 +303,7 @@ function activarTest() {
       chapa: $('#sala-chapa'),
       alMover: (m, extra, z) => { const c = $('#metros'); if (!c) return; r.extra = extra; r.z = z; c.value = m; c.dispatchEvent(new Event('input')); $('#sala-pista').classList.add('tocada'); }
     });
+    sala.lista.then(() => $('#sala-lienzo')?.classList.add('lista'));
     sincronizar();
   }).catch((err) => console.warn('No se pudo cargar el salón en 3D', err));
 
@@ -505,8 +501,7 @@ function vistaInicio() {
       </div>
     </div>
   </section>`;
-  activarTest();
-  montarHero();
+  activarTest(montarHero());
 }
 
 async function montarHero() {
@@ -546,7 +541,9 @@ async function montarHero() {
         }
       }
     });
-    hero3d.lista.then(() => seccion.classList.add('lista'));
+    await hero3d.lista;
+    seccion.classList.add('lista');
+    await new Promise((r) => setTimeout(r, 400));
   } catch (err) {
     console.warn('No se pudo cargar la planta en 3D', err);
     seccion.classList.add('sin-3d');

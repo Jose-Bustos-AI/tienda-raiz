@@ -277,13 +277,35 @@ function crecer(planta, t, tiempo = 0, animo = 0) {
   });
 }
 
-function crearRenderer(lienzo) {
-  const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-  return renderer;
+// Un solo motor gráfico (un solo contexto WebGL) para toda la página: la planta de la portada y el salón
+// comparten shaders ya compilados. Cada escena se pinta en él y se copia a su lienzo.
+let comun = null;
+function motor() {
+  if (comun) return comun;
+  const r = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: true, alpha: true });
+  r.setPixelRatio(1);
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  return (comun = r);
+}
+const densidad = () => Math.min(window.devicePixelRatio || 1, 1.5);
+function pintarEn(ctx, escena, camara, pw, ph, exposicion) {
+  const r = motor(), c = r.domElement;
+  if (c.width < pw || c.height < ph) r.setSize(Math.max(c.width, pw), Math.max(c.height, ph), false);
+  r.toneMappingExposure = exposicion;
+  r.setViewport(0, 0, pw, ph); r.setScissor(0, 0, pw, ph); r.setScissorTest(true);
+  r.render(escena, camara);
+  ctx.clearRect(0, 0, pw, ph);
+  ctx.drawImage(c, 0, c.height - ph, pw, ph, 0, 0, pw, ph);
+}
+// Al salir de una página se sueltan sus mallas y texturas propias (lo compartido se queda para la siguiente visita)
+function liberar(escena) {
+  const mallas = new Set(Object.values(geos)), texs = new Set([...Object.values(texturas), blanca, sombraBlanda.tex]);
+  escena.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!mallas.has(o.geometry)) o.geometry.dispose();
+    if (o.material.map && !texs.has(o.material.map)) o.material.map.dispose();
+  });
 }
 // Se compila sin bloquear la página. No hay mapas de sombra: en gráficas integradas su shader tarda
 // muchos segundos en compilar, así que las sombras y la luz de la ventana van dibujadas.
@@ -299,9 +321,11 @@ export class HeroPlanta {
   constructor(seccion, lienzo, etiquetasEl, { alCambiar, etiquetas = [] } = {}) {
     this.seccion = seccion; this.lienzo = lienzo; this.alCambiar = alCambiar;
     this.reducir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.renderer = crearRenderer(lienzo);
+    this.renderer = motor();
+    this.ctx = lienzo.getContext('2d');
     this.escena = new THREE.Scene();
     this.escena.add(new THREE.HemisphereLight(0xfff6e2, 0x4f6b45, 1.25));
+    this.escena.add(new THREE.PointLight(0xffffff, 0)); // mismas luces que el salón: mismo shader
     const relleno = new THREE.DirectionalLight(0xd8ecff, 0.8); relleno.position.set(-3, 2, -2); this.escena.add(relleno);
     this.sol = new THREE.DirectionalLight(0xffe2b0, 3.4);
     this.escena.add(this.sol, this.sol.target);
@@ -352,7 +376,8 @@ export class HeroPlanta {
     const w = caja.clientWidth, h = caja.clientHeight;
     if (!w || !h) return;
     this.w = w; this.h = h;
-    this.renderer.setSize(w, h, false);
+    this.pw = Math.round(w * densidad()); this.ph = Math.round(h * densidad());
+    this.lienzo.width = this.pw; this.lienzo.height = this.ph;
     this.camara.aspect = w / h;
     this.ancha = w / h > 1.15;
     const tan = Math.tan((this.camara.fov / 2) * Math.PI / 180);
@@ -401,7 +426,7 @@ export class HeroPlanta {
   }
 
   pintar(p, t) {
-    this.renderer.render(this.escena, this.camara);
+    pintarEn(this.ctx, this.escena, this.camara, this.pw, this.ph, 1.05);
     for (const e of this.etiquetas) {
       const hoja = this.planta.hojas[e.hoja];
       const v = suave(e.de, e.de + 0.06, p) * (1 - suave(e.a, e.a + 0.06, p));
@@ -422,8 +447,21 @@ export class HeroPlanta {
     window.removeEventListener('pointermove', this.alMover);
     window.removeEventListener('scroll', this.alScroll);
     this.ro.disconnect(); this.io.disconnect();
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    liberar(this.escena);
+  }
+}
+
+// Cede el turno al navegador entre trozos de trabajo para no dar tirones al scroll
+let ultimoScroll = 0;
+window.addEventListener('scroll', () => { ultimoScroll = performance.now(); }, { passive: true });
+const libre = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 250 }) : setTimeout(r, 0)));
+// Espera un rato libre y sin scroll; si el elemento ya está en pantalla no espera más
+async function pausa(el) {
+  for (let i = 0; i < 300; i++) {
+    await libre();
+    if (performance.now() - ultimoScroll > 220) return;
+    if (el) { const b = el.getBoundingClientRect(); if (b.top < window.innerHeight && b.bottom > 0) return; }
+    await new Promise((r) => setTimeout(r, 120));
   }
 }
 
@@ -462,12 +500,13 @@ export class Habitacion3D {
   constructor(lienzo, { chapa, alMover } = {}) {
     this.lienzo = lienzo; this.chapa = chapa; this.alMover = alMover;
     this.reducir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.renderer = crearRenderer(lienzo);
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer = motor();
+    this.ctx = lienzo.getContext('2d');
     this.escena = new THREE.Scene();
     this.cielo = new THREE.HemisphereLight(0xfff3df, 0x9c8463, 1.7);
     this.escena.add(this.cielo);
     const relleno = new THREE.DirectionalLight(0xfff1dc, 0.7); relleno.position.set(6, 5, 8); this.escena.add(relleno);
+    this.escena.add(new THREE.DirectionalLight(0xffffff, 0)); // mismas luces que la portada: mismo shader
     // La ventana ilumina como un foco: lo que está cerca recibe más luz
     this.sol = new THREE.PointLight(0xffdfa6, 20, 9, 1.5);
     this.sol.position.set(0.9, 1.9, 1.6);
@@ -483,8 +522,7 @@ export class Habitacion3D {
     this.extrasO = [];
     this.tiempo = 0; this.riego = null; this.arrastrable = true;
 
-    this.construirSala();
-    this.construirHabitantes();
+    this.extras = [];
 
     this.rayo = new THREE.Raycaster();
     // La planta se arrastra por el suelo: hacia la ventana, hacia el fondo o a un rincón
@@ -535,17 +573,41 @@ export class Habitacion3D {
     this.ajustar();
     this.antes = performance.now();
     this.bucle = this.bucle.bind(this);
-    this.camara.position.set(6, 4, 12); this.camara.lookAt(this.foco);
-    // Se compila con todo a la vista para que nada dé un tirón al aparecer
-    const ocultos = [];
-    this.escena.traverse((o) => { if (!o.visible) { ocultos.push(o); o.visible = true; } });
-    this.lista = preparar(this.renderer, this.escena, this.camara).then(() => {
-      ocultos.forEach((o) => { o.visible = false; });
-      if (!this.fin) this.frame = requestAnimationFrame(this.bucle);
-    });
+    this.lista = this.montar();
   }
 
-  construirSala() {
+  // El salón se monta a trozos, cediendo el turno entre uno y otro, y se dibuja una vez con todo a la vista
+  // antes de enseñarlo: así ni el scroll ni las respuestas dan tirones.
+  async montar() {
+    const turno = () => pausa(this.lienzo);
+    await turno(); if (this.fin) return;
+    await this.construirSala(turno); if (this.fin) return;
+    await turno(); if (this.fin) return;
+    await this.construirHabitantes(turno); if (this.fin) return;
+    for (const crear of this.porCrear) { await turno(); if (this.fin) return; this.extras.push(crear()); }
+    this.estadoExtras();
+    await turno(); if (this.fin) return;
+    this.camara.position.set(6, 4, 12); this.camara.lookAt(this.foco);
+    const ocultos = [];
+    this.escena.traverse((o) => { if (!o.visible) { ocultos.push(o); o.visible = true; } });
+    await preparar(this.renderer, this.escena, this.camara);
+    if (this.fin) return;
+    // Primer dibujo por tandas: cada tanda sube a la gráfica solo unas pocas mallas y texturas
+    const piezas = this.escena.children.filter((o) => !o.isLight);
+    piezas.forEach((o) => { o.visible = false; });
+    for (let i = 0; i < piezas.length; i += 5) {
+      await turno(); if (this.fin) return;
+      piezas.slice(i, i + 5).forEach((o) => { o.visible = true; });
+      pintarEn(this.ctx, this.escena, this.camara, this.pw || 300, this.ph || 150, 1);
+      piezas.slice(i, i + 5).forEach((o) => { o.visible = false; });
+    }
+    piezas.forEach((o) => { o.visible = true; });
+    ocultos.forEach((o) => { o.visible = false; });
+    this.montado = true;
+    this.frame = requestAnimationFrame(this.bucle);
+  }
+
+  async construirSala(turno) {
     const e = this.escena, { ancho, fondo, alto } = SALA;
     const caja = (w, h, d, color, x, y, z, rug = 0.9) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, rug)); m.position.set(x, y, z); m.castShadow = true; e.add(m); return m; };
     const redonda = (w, h, d, r, color, x, y, z, rug = 0.95) => { const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, r), mat(color, rug)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; e.add(m); return m; };
@@ -570,6 +632,7 @@ export class Habitacion3D {
     const suelo = new THREE.Mesh(new THREE.BoxGeometry(ancho + 0.12, 0.14, fondo + 0.12), mat(0xffffff, 0.62, { map: tarima }));
     suelo.position.set(ancho / 2 - 0.06, -0.07, fondo / 2 - 0.06); suelo.receiveShadow = true; e.add(suelo);
 
+    await turno(); if (this.fin) return;
     // Paredes: la del fondo y la de la ventana (con su hueco)
     const pared = mat(0xf1e9d8, 0.95);
     const fondoM = new THREE.Mesh(new THREE.BoxGeometry(ancho + 0.12, alto, 0.12), pared);
@@ -617,6 +680,7 @@ export class Habitacion3D {
     }) });
     const mancha = new THREE.Mesh(this.manchaGeo, this.manchaMat); mancha.frustumCulled = false; mancha.renderOrder = 2; e.add(mancha);
 
+    await turno(); if (this.fin) return;
     // Alfombra
     const alfombra = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 1.7), mat(0xffffff, 1, { map: lienzoTex(512, 320, (g, w, h) => {
       g.fillStyle = '#efe6d3'; g.fillRect(0, 0, w, h);
@@ -629,6 +693,7 @@ export class Habitacion3D {
     }) }));
     alfombra.rotation.x = -Math.PI / 2; alfombra.position.set(3.15, 0.004, 1.95); alfombra.receiveShadow = true; e.add(alfombra);
 
+    await turno(); if (this.fin) return;
     // Sofá
     const ss = sombraBlanda(1.25, 0.62); ss.position.set(3, 0.005, 0.55); e.add(ss);
     redonda(1.95, 0.3, 0.82, 0.08, 0xe3d9c5, 3, 0.31, 0.55);
@@ -641,6 +706,7 @@ export class Habitacion3D {
     redonda(0.4, 0.4, 0.14, 0.06, 0x8fae8a, 3.52, 0.71, 0.42).rotation.set(-0.25, -0.25, -0.05);
     for (const [x, z] of [[2.12, 0.22], [3.88, 0.22], [2.12, 0.88], [3.88, 0.88]]) caja(0.05, 0.16, 0.05, 0x6f5236, x, 0.08, z, 0.6);
 
+    await turno(); if (this.fin) return;
     // Cuadro, balda con libros, lámpara y mesita
     caja(0.78, 0.98, 0.03, 0x8c6a45, 3, 1.72, 0.02, 0.6);
     const lamina = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.88), mat(0xffffff, 0.9, { map: lienzoTex(256, 330, (g, w, h) => {
@@ -667,7 +733,7 @@ export class Habitacion3D {
     const sm = sombraBlanda(0.4, 0.4, 0.3); sm.position.set(4.98, 0.006, 0.98); e.add(sm);
   }
 
-  construirHabitantes() {
+  async construirHabitantes(turno) {
     const e = this.escena;
     // La planta protagonista, con un taburete para cuando es pequeña
     this.principal = new THREE.Group();
@@ -693,16 +759,18 @@ export class Habitacion3D {
       e.add(g);
       return { g, nivel, v: 0 };
     };
-    this.extras = [
-      poner(plantaSansevieria(8), 0.78, 0, 0.5, 1, 2),
-      poner(plantaColgante(13), 1.62, 1.62, 0.16, 1, 2),
-      poner(plantaPilea(5), 4.98, 0.518, 0.98, 1, 2),
-      poner(plantaMonstera(9, 0xf2efe8), 5.1, 0, 2.7, 0.92, 3),
-      poner(plantaSansevieria(15, 0xc9a675), 0.55, 0, 2.85, 0.72, 3),
-      poner(plantaPilea(6, 0xc4673f), -0.04, VENTANA.y1, 1.15, 0.9, 3),
-      poner(plantaColgante(17, 0xc4673f), 1.25, 1.62, 0.16, 0.8, 3)
+    // se crean de una en una, más tarde (ver montar)
+    this.porCrear = [
+      () => poner(plantaSansevieria(8), 0.78, 0, 0.5, 1, 2),
+      () => poner(plantaColgante(13), 1.62, 1.62, 0.16, 1, 2),
+      () => poner(plantaPilea(5), 4.98, 0.518, 0.98, 1, 2),
+      () => poner(plantaMonstera(9, 0xf2efe8), 5.1, 0, 2.7, 0.92, 3),
+      () => poner(plantaSansevieria(15, 0xc9a675), 0.55, 0, 2.85, 0.72, 3),
+      () => poner(plantaPilea(6, 0xc4673f), -0.04, VENTANA.y1, 1.15, 0.9, 3),
+      () => poner(plantaColgante(17, 0xc4673f), 1.25, 1.62, 0.16, 0.8, 3)
     ];
 
+    await turno(); if (this.fin) return;
     // El gato
     const gato = new THREE.Group();
     const pelo = mat(0xd98a4b, 0.92);
@@ -727,6 +795,7 @@ export class Habitacion3D {
     gato.position.set(3.45, 0.006, 2.3); gato.rotation.y = 0.45; gato.scale.setScalar(0.001); gato.visible = false;
     e.add(gato); this.gato = gato;
 
+    await turno(); if (this.fin) return;
     // Regadera y gotas
     const reg = new THREE.Group();
     const chapa = mat(0x8fae8a, 0.45, { metalness: 0.25 });
@@ -759,10 +828,12 @@ export class Habitacion3D {
     const tam = paso >= 3 ? r.espacio : null;
     this.o.esc = tam === 'pequena' ? 0.45 : tam === 'grande' ? 1.25 : 0.9;
     this.o.tab = tam === 'pequena' ? 1 : 0;
-    const nivel = paso >= 4 ? (r.experiencia || 0) : 0;
-    this.extras.forEach((x) => { x.o = nivel >= x.nivel ? 1 : 0; });
+    this.nivelExtras = paso >= 4 ? (r.experiencia || 0) : 0;
+    this.estadoExtras();
     this.o.crece = 0.62 + 0.38 * Math.min(paso, 5) / 5;
   }
+
+  estadoExtras() { this.extras.forEach((x) => { x.o = (this.nivelExtras || 0) >= x.nivel ? 1 : 0; }); }
 
   regar(veces) { this.riego = { inicio: this.tiempo, veces }; }
 
@@ -771,7 +842,8 @@ export class Habitacion3D {
     const w = caja.clientWidth, h = caja.clientHeight;
     if (!w || !h) return;
     this.w = w; this.h = h;
-    this.renderer.setSize(w, h, false);
+    this.pw = Math.round(w * densidad()); this.ph = Math.round(h * densidad());
+    this.lienzo.width = this.pw; this.lienzo.height = this.ph;
     this.camara.aspect = w / h;
     this.camara.updateProjectionMatrix();
     const tan = Math.tan((this.camara.fov / 2) * Math.PI / 180);
@@ -874,7 +946,7 @@ export class Habitacion3D {
     const d = this.distancia * v.zoom;
     this.camara.position.set(this.foco.x + Math.sin(v.az) * Math.cos(v.el) * d, this.foco.y + Math.sin(v.el) * d, this.foco.z + Math.cos(v.az) * Math.cos(v.el) * d);
     this.camara.lookAt(this.foco);
-    this.renderer.render(this.escena, this.camara);
+    pintarEn(this.ctx, this.escena, this.camara, this.pw, this.ph, 1);
 
     if (this.chapa) {
       const p = V3(v.x, cima + 0.12, v.z).project(this.camara);
@@ -890,7 +962,6 @@ export class Habitacion3D {
     this.lienzo.removeEventListener('pointermove', this.mover);
     this.lienzo.removeEventListener('pointerup', this.arriba);
     this.lienzo.removeEventListener('pointercancel', this.arriba);
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    liberar(this.escena);
   }
 }
