@@ -605,7 +605,7 @@ function vistaPago() {
       paso += 1;
       pintar();
     });
-    window.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
   pintar();
 }
@@ -707,7 +707,7 @@ function ruta() {
     default: vistaNoEncontrada();
   }
   revelar();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'instant' });
   app.focus({ preventScroll: true });
 }
 window.addEventListener('hashchange', ruta);
