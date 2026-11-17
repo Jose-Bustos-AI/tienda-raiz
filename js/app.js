@@ -247,6 +247,11 @@ function htmlTest(enPagina) {
   return `<section class="test ${enPagina ? 'test--pagina' : ''}" id="test" aria-labelledby="test-titulo">
     <div class="test__in envoltura">
       <div class="test__planta">
+        <div class="sala" id="sala" hidden>
+          <canvas class="sala__lienzo" id="sala-lienzo" role="img" aria-label="Salón en 3D con una ventana por la que entra el sol. La planta se mueve con el control de distancia."></canvas>
+          <div class="sala__chapa" id="sala-chapa" aria-hidden="true"><span class="soles" id="chapa-soles"><i></i><i></i><i></i><i></i></span><b id="chapa-luz"></b><small id="chapa-m"></small></div>
+          <div class="sala__pista" id="sala-pista" aria-hidden="true">↔ Arrastra la planta por el salón</div>
+        </div>
         <div class="test__sol" aria-hidden="true"></div>
         <div id="test-planta">${plantaSVG()}</div>
         <div class="test__progreso" aria-hidden="true"><span id="test-barra"></span></div>
@@ -261,6 +266,13 @@ function htmlTest(enPagina) {
   </section>`;
 }
 
+let sala3d = null;
+let hero3d = null;
+function limpiar3D() {
+  sala3d?.destruir(); sala3d = null;
+  hero3d?.destruir(); hero3d = null;
+}
+
 function activarTest() {
   const raiz = $('#test');
   if (!raiz) return;
@@ -268,9 +280,41 @@ function activarTest() {
   const guardado = leer('raiz-test', null);
   const r = guardado?.r || { luz: 2, metros: 2, orientacion: 'sur' };
   let paso = guardado?.terminado ? PREGUNTAS.length : 0;
+  let sala = null;
+  let ocupado = false;
+  raiz.style.setProperty('--cab-real', `${$('#cab').offsetHeight}px`);
+
+  // El salón en 3D refleja cada respuesta; si el dispositivo no puede con el 3D, se queda el dibujo.
+  const sincronizar = () => {
+    raiz.dataset.paso = paso;
+    $('#chapa-luz').textContent = LUZ[r.luz];
+    $('#chapa-m').textContent = `a ${r.metros.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m de la ventana`;
+    $('#chapa-soles').dataset.n = r.luz;
+    if (!sala) return;
+    sala.luz(r.metros, r.orientacion, r.luz);
+    sala.estado(paso, r);
+  };
+  // En la portada no se monta hasta que el recomendador se acerca a la pantalla
+  const cerca = new Promise((listo) => {
+    if (!('IntersectionObserver' in window)) return listo();
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); listo(); } }, { rootMargin: '900px 0px' });
+    io.observe(raiz);
+  });
+  cerca.then(() => import('./jardin3d.js')).then(({ Habitacion3D }) => {
+    if (!raiz.isConnected) return;
+    $('#sala').hidden = false;
+    raiz.classList.add('con-3d');
+    sala = sala3d = new Habitacion3D($('#sala-lienzo'), {
+      chapa: $('#sala-chapa'),
+      alMover: (m) => { const c = $('#metros'); if (!c) return; c.value = m; c.dispatchEvent(new Event('input')); $('#sala-pista').classList.add('tocada'); }
+    });
+    sincronizar();
+  }).catch((err) => console.warn('No se pudo cargar el salón en 3D', err));
 
   const pintar = () => {
     const total = PREGUNTAS.length;
+    ocupado = false;
+    sincronizar();
     crecer(svg, paso / total);
     $('#test-barra').style.width = `${(paso / total) * 100}%`;
     $('#test-paso').textContent = paso < total ? `Pregunta ${paso + 1} de ${total}` : '¡Ya ha crecido tu recomendación!';
@@ -296,6 +340,7 @@ function activarTest() {
         $('#metros-txt').textContent = `${r.metros.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
         $('#luz-txt').textContent = LUZ[r.luz];
         hab.dataset.ori = r.orientacion;
+        sincronizar();
       };
       $('#metros').addEventListener('input', act);
       $$('[data-ori]', caja).forEach((b) => b.addEventListener('click', () => {
@@ -309,9 +354,15 @@ function activarTest() {
         <div class="tarjetas-opcion">${q.opciones.map((o, i) => `<button class="opcion-test" type="button" data-i="${i}" aria-pressed="${r[q.id] === o.v}"><span class="opcion-test__icono" aria-hidden="true">${iconoOpcion(o.i)}</span><b>${o.t}</b><small>${o.d}</small></button>`).join('')}</div>
         <div class="test__acciones">${atras}</div>`;
       $$('.opcion-test', caja).forEach((b) => b.addEventListener('click', () => {
+        if (ocupado) return;
+        ocupado = true;
         r[q.id] = q.opciones[+b.dataset.i].v;
         $$('.opcion-test', caja).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        setTimeout(() => { paso += 1; guardar('raiz-test', { r, terminado: paso >= PREGUNTAS.length }); pintar(); }, reducir ? 0 : 260);
+        // El salón enseña la respuesta (la regadera, el gato, el tamaño, más plantas) antes de pasar a la siguiente
+        sincronizar();
+        if (sala && q.id === 'riego') sala.regar(r.riego <= 4 ? 3 : r.riego <= 8 ? 2 : 1);
+        const espera = reducir ? 0 : !sala ? 260 : q.id === 'riego' ? 1700 : 1150;
+        setTimeout(() => { paso += 1; guardar('raiz-test', { r, terminado: paso >= PREGUNTAS.length }); pintar(); }, espera);
       }));
     }
     caja.querySelector('[data-atras]')?.addEventListener('click', () => { paso -= 1; pintar(); });
@@ -376,8 +427,11 @@ function vistaInicio() {
   const destacadas = ['monstera', 'pothos', 'calathea', 'kentia', 'sansevieria', 'pilea', 'ficus', 'orquidea'].map(buscar);
   const seguras = PRODUCTOS.filter((p) => p.cuidados?.mascotas);
   app.innerHTML = `
-  <section class="portada">
-    <div class="portada__grid envoltura">
+  <section class="portada portada--viva" id="portada">
+   <div class="portada__pegado">
+    <canvas class="hero__lienzo" id="hero-lienzo" aria-hidden="true"></canvas>
+    <div class="hero__etiquetas" id="hero-etiquetas" aria-hidden="true"></div>
+    <div class="portada__grid envoltura" id="fase-0">
       <div class="portada__copia">
         <span class="etiqueta">Vivero de plantas de interior · Murcia</span>
         <h1 class="portada__titulo"><span class="portada__l">Plantas que</span> <em class="portada__l">se quedan.</em></h1>
@@ -388,13 +442,31 @@ function vistaInicio() {
         </div>
         <ul class="portada__datos"><li><b>30 días</b> de garantía</li><li><b>12</b> plantas fáciles</li><li><b>48 h</b> en caja protegida</li></ul>
       </div>
-      <div class="portada__media">
+      <div class="portada__media" id="hero-respaldo" hidden>
         <div class="portada__arco"><img src="img/portada.webp" alt="Salón luminoso con una monstera, un ficus, una kentia y un pothos colgante" id="parallax"></div>
         <div class="flotante flotante--1"><span>${ICONO.luz}</span><div><small>Monstera</small><b>Luz media</b></div></div>
         <div class="flotante flotante--2"><span>${ICONO.riego}</span><div><small>Próximo riego</small><b>El jueves</b></div></div>
         <div class="flotante flotante--3"><span>${ICONO.mascota}</span><div><small>Kentia</small><b>Segura para gatos</b></div></div>
       </div>
     </div>
+    <div class="hero__fase hero__fase--crece envoltura" id="fase-1" aria-hidden="true">
+      <div>
+        <span class="etiqueta">Así crece una Monstera en tu casa</span>
+        <div class="hero__contador"><b>Semana <i id="hero-semana">1</i></b><span><i id="hero-cm">30</i> cm</span></div>
+        <div class="hero__barra"><span id="hero-barra"></span></div>
+        <p>Una hoja nueva cada tres semanas si le das la luz y el agua que pide. Nosotros te decimos cuáles son.</p>
+      </div>
+    </div>
+    <div class="hero__fase hero__fase--fin envoltura" id="fase-2">
+      <div>
+        <span class="etiqueta">Un año después</span>
+        <h2 class="hero__titulo">Ahora, <em>la tuya.</em></h2>
+        <p class="portada__texto">Cinco preguntas sobre tu casa y te decimos qué planta va a crecer así contigo.</p>
+        <div class="portada__acciones"><a class="btn" href="#test" data-ir="test">Encontrar mi planta</a></div>
+      </div>
+    </div>
+    <div class="hero__pista" id="hero-pista" aria-hidden="true">Baja y mírala crecer <span>↓</span></div>
+   </div>
   </section>
   <div class="cinta" aria-hidden="true"><div class="cinta__pista">${Array(2).fill('<span>Recomendador de plantas</span><span>Garantía de 30 días</span><span>10 % con el código BIENVENIDA10</span><span>Envío gratis desde 45 €</span><span>Calendario de riego con cada pedido</span><span>Plantas seguras para mascotas</span>').join('')}</div></div>
   ${htmlTest(false)}
@@ -434,6 +506,50 @@ function vistaInicio() {
     </div>
   </section>`;
   activarTest();
+  montarHero();
+}
+
+async function montarHero() {
+  const seccion = $('#portada');
+  if (!seccion) return;
+  const fases = [$('#fase-0'), $('#fase-1'), $('#fase-2')];
+  seccion.style.setProperty('--cab-real', `${$('#cab').offsetHeight}px`);
+  const suave = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const poner = (el, v) => { el.style.opacity = v.toFixed(3); el.style.pointerEvents = v > 0.6 ? '' : 'none'; el.style.visibility = v < 0.01 ? 'hidden' : 'visible'; };
+  const dato = (titulo, texto) => `<b>${titulo}</b><small>${texto}</small>`;
+  try {
+    const { HeroPlanta } = await import('./jardin3d.js');
+    if (!seccion.isConnected) return;
+    let semana = 0;
+    hero3d = new HeroPlanta(seccion, $('#hero-lienzo'), $('#hero-etiquetas'), {
+      etiquetas: [
+        { hoja: 5, de: 0.16, a: 0.4, lado: 'der', html: dato('Luz media', 'Ni sol directo ni sombra') },
+        { hoja: 7, de: 0.3, a: 0.54, lado: 'izq', html: dato('Riego cada 7 días', 'Cuando la tierra se seca') },
+        { hoja: 10, de: 0.44, a: 0.66, lado: 'der', html: dato('Hoja nueva', 'Cada tres semanas') },
+        { hoja: 12, de: 0.56, a: 0.74, lado: 'izq', html: dato('Purifica el aire', 'Y llena el salón') }
+      ],
+      alCambiar: (p) => {
+        poner(fases[0], 1 - suave(0.02, 0.1, p));
+        poner(fases[1], suave(0.13, 0.22, p) * (1 - suave(0.72, 0.8, p)));
+        poner(fases[2], suave(0.85, 0.95, p));
+        $('#hero-pista').style.opacity = (1 - suave(0, 0.05, p)).toFixed(3);
+        seccion.style.setProperty('--velo', ((1 - suave(0.03, 0.14, p)) + suave(0.8, 0.94, p)).toFixed(3));
+        const avance = suave(0.03, 0.78, p);
+        const s = Math.round(1 + avance * 51);
+        if (s !== semana) {
+          semana = s;
+          $('#hero-semana').textContent = s;
+          $('#hero-cm').textContent = Math.round(30 + avance * 80);
+          $('#hero-barra').style.width = `${avance * 100}%`;
+        }
+      }
+    });
+    hero3d.lista.then(() => seccion.classList.add('lista'));
+  } catch (err) {
+    console.warn('No se pudo cargar la planta en 3D', err);
+    seccion.classList.add('sin-3d');
+    $('#hero-respaldo').hidden = false;
+  }
 }
 
 function vistaEncuentra() {
@@ -695,6 +811,7 @@ function ruta() {
   const partes = location.hash.replace(/^#\/?/, '').split('/');
   $('#buscador').hidden = true;
   if ($('#cajon').classList.contains('abierto')) cerrarCajon();
+  limpiar3D();
   $$('.cab__nav a, .cab__movil a').forEach((a) => (a.getAttribute('href') === location.hash ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
   switch (partes[0]) {
     case '': vistaInicio(); break;

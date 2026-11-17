@@ -1,13 +1,17 @@
 # Raíz · tienda online de demostración
 
-Tienda de plantas de interior programada desde cero, con un recomendador que te dice qué planta va a sobrevivir en tu casa. Mueves una maceta en un dibujo de tu habitación para medir la luz, contestas cómo riegas, si tienes mascotas y qué hueco quieres llenar, y mientras respondes una planta dibujada va creciendo hasta darte tus tres plantas con su porcentaje de afinidad.
+Tienda de plantas de interior programada desde cero. En la portada, una Monstera en 3D crece hoja a hoja mientras bajas, con el contador de semanas y centímetros. Y el recomendador es un salón en 3D: arrastras la planta por la habitación para medir la luz que entra por la ventana, y con cada respuesta el salón cambia (la regadera riega, aparece el gato, la planta cambia de tamaño, llegan más plantas) hasta darte tus tres plantas con su porcentaje de afinidad.
 
 **Verla publicada:** https://raiz.dania360.com/
 
 ## Cómo está hecha
-- HTML, CSS y JavaScript propios, sin framework ni librerías externas
+- HTML, CSS y JavaScript propios, sin framework; solo three.js para el 3D
 - Recomendador (`js/datos.js`): puntúa cada planta según luz, riego, mascotas, espacio y experiencia, y explica sus motivos
-- Simulador de luz y planta que crece dibujados por código en SVG (`js/planta.js`)
+- Plantas y salón en 3D construidos por código (`js/jardin3d.js`): no hay modelos descargados. Cada hoja es una malla con su silueta (la Monstera, con sus cortes y agujeros), curvada y con los nervios pintados
+- Portada ligada al scroll: la Monstera pasa de esqueje a planta adulta, con etiquetas de cuidados que siguen a las hojas
+- Salón del recomendador con la mancha de sol que cambia según hacia dónde mira la ventana; la planta se arrastra con el dedo o el ratón
+- Pensado para gráficas modestas: tres shaders en total, sin mapas de sombra, compilados sin bloquear la página
+- Si el dispositivo no admite 3D, se queda la versión dibujada en SVG (`js/planta.js`)
 - Ficha de cuidados de cada planta y calendario de riego de las próximas cuatro semanas
 - Al terminar el pedido, el calendario de riego se puede añadir al móvil con un archivo `.ics` generado en el navegador
 - Tamaños y macetas que suman al precio, filtros combinables (aptas para mascotas, muy fáciles, poca luz), favoritos y buscador
