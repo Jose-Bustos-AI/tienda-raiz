@@ -214,7 +214,7 @@ function tarjeta(p) {
 
 /* ---------- Recomendador ---------- */
 const PREGUNTAS = [
-  { id: 'luz', titulo: '¿Cuánta luz tiene el sitio donde la vas a poner?', ayuda: 'Mueve la maceta hasta la distancia a la que estará de la ventana.' },
+  { id: 'luz', titulo: '¿Cuánta luz tiene el sitio donde la vas a poner?', ayuda: 'Arrastra la planta por el salón hasta el sitio donde la pondrías: cerca de la ventana, al fondo o en un rincón.' },
   { id: 'riego', titulo: '¿Cada cuánto te acuerdas de regar?', ayuda: 'Sé sincero: no hay respuestas malas, hay plantas para cada ritmo.',
     opciones: [{ v: 4, t: 'Muy a menudo', d: 'Me encanta estar pendiente', i: 'g3' }, { v: 8, t: 'Una vez por semana', d: 'Tengo mi día de riego', i: 'g2' }, { v: 18, t: 'Cuando me acuerdo', d: 'Cada dos o tres semanas', i: 'g1' }] },
   { id: 'mascotas', titulo: '¿Vives con perros o gatos?', ayuda: 'Algunas plantas les sientan mal si las mordisquean.',
@@ -250,7 +250,7 @@ function htmlTest(enPagina) {
         <div class="sala" id="sala" hidden>
           <canvas class="sala__lienzo" id="sala-lienzo" role="img" aria-label="Salón en 3D con una ventana por la que entra el sol. La planta se mueve con el control de distancia."></canvas>
           <div class="sala__chapa" id="sala-chapa" aria-hidden="true"><span class="soles" id="chapa-soles"><i></i><i></i><i></i><i></i></span><b id="chapa-luz"></b><small id="chapa-m"></small></div>
-          <div class="sala__pista" id="sala-pista" aria-hidden="true">↔ Arrastra la planta por el salón</div>
+          <div class="sala__pista" id="sala-pista" aria-hidden="true">✥ Arrastra la planta a cualquier rincón</div>
         </div>
         <div class="test__sol" aria-hidden="true"></div>
         <div id="test-planta">${plantaSVG()}</div>
@@ -288,10 +288,10 @@ function activarTest() {
   const sincronizar = () => {
     raiz.dataset.paso = paso;
     $('#chapa-luz').textContent = LUZ[r.luz];
-    $('#chapa-m').textContent = `a ${r.metros.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m de la ventana`;
+    $('#chapa-m').textContent = `a ${(r.metros + (r.extra || 0)).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m de la ventana`;
     $('#chapa-soles').dataset.n = r.luz;
     if (!sala) return;
-    sala.luz(r.metros, r.orientacion, r.luz);
+    sala.luz(r.metros, r.orientacion, r.luz, r.z);
     sala.estado(paso, r);
   };
   // En la portada no se monta hasta que el recomendador se acerca a la pantalla
@@ -306,7 +306,7 @@ function activarTest() {
     raiz.classList.add('con-3d');
     sala = sala3d = new Habitacion3D($('#sala-lienzo'), {
       chapa: $('#sala-chapa'),
-      alMover: (m) => { const c = $('#metros'); if (!c) return; c.value = m; c.dispatchEvent(new Event('input')); $('#sala-pista').classList.add('tocada'); }
+      alMover: (m, extra, z) => { const c = $('#metros'); if (!c) return; r.extra = extra; r.z = z; c.value = m; c.dispatchEvent(new Event('input')); $('#sala-pista').classList.add('tocada'); }
     });
     sincronizar();
   }).catch((err) => console.warn('No se pudo cargar el salón en 3D', err));
@@ -335,9 +335,9 @@ function activarTest() {
       const hab = $('.habitacion', caja);
       const act = () => {
         r.metros = +$('#metros').value;
-        r.luz = nivelLuz(r.metros, r.orientacion);
+        r.luz = nivelLuz(Math.min(5, r.metros + (r.extra || 0)), r.orientacion);
         moverMaceta(hab, r.metros, r.luz);
-        $('#metros-txt').textContent = `${r.metros.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
+        $('#metros-txt').textContent = `${(r.metros + (r.extra || 0)).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
         $('#luz-txt').textContent = LUZ[r.luz];
         hab.dataset.ori = r.orientacion;
         sincronizar();
@@ -452,7 +452,7 @@ function vistaInicio() {
     <div class="hero__fase hero__fase--crece envoltura" id="fase-1" aria-hidden="true">
       <div>
         <span class="etiqueta">Así crece una Monstera en tu casa</span>
-        <div class="hero__contador"><b>Semana <i id="hero-semana">1</i></b><span><i id="hero-cm">30</i> cm</span></div>
+        <div class="hero__contador"><b>Semana <i id="hero-semana">1</i></b><span><i id="hero-cm">12</i> cm</span></div>
         <div class="hero__barra"><span id="hero-barra"></span></div>
         <p>Una hoja nueva cada tres semanas si le das la luz y el agua que pide. Nosotros te decimos cuáles son.</p>
       </div>
@@ -512,10 +512,11 @@ function vistaInicio() {
 async function montarHero() {
   const seccion = $('#portada');
   if (!seccion) return;
-  const fases = [$('#fase-0'), $('#fase-1'), $('#fase-2')];
+  const fases = [$('#fase-0'), $('#fase-1'), $('#fase-2')], pista = $('#hero-pista'), pegado = $('.portada__pegado', seccion);
   seccion.style.setProperty('--cab-real', `${$('#cab').offsetHeight}px`);
   const suave = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
-  const poner = (el, v) => { el.style.opacity = v.toFixed(3); el.style.pointerEvents = v > 0.6 ? '' : 'none'; el.style.visibility = v < 0.01 ? 'hidden' : 'visible'; };
+  const poner = (el, v) => { const t = v.toFixed(2); if (el.dataset.v === t) return; el.dataset.v = t; el.style.opacity = t; el.style.pointerEvents = v > 0.6 ? '' : 'none'; el.style.visibility = v < 0.01 ? 'hidden' : 'visible'; };
+  let veloAntes = '';
   const dato = (titulo, texto) => `<b>${titulo}</b><small>${texto}</small>`;
   try {
     const { HeroPlanta } = await import('./jardin3d.js');
@@ -523,23 +524,24 @@ async function montarHero() {
     let semana = 0;
     hero3d = new HeroPlanta(seccion, $('#hero-lienzo'), $('#hero-etiquetas'), {
       etiquetas: [
-        { hoja: 5, de: 0.16, a: 0.4, lado: 'der', html: dato('Luz media', 'Ni sol directo ni sombra') },
-        { hoja: 7, de: 0.3, a: 0.54, lado: 'izq', html: dato('Riego cada 7 días', 'Cuando la tierra se seca') },
-        { hoja: 10, de: 0.44, a: 0.66, lado: 'der', html: dato('Hoja nueva', 'Cada tres semanas') },
-        { hoja: 12, de: 0.56, a: 0.74, lado: 'izq', html: dato('Purifica el aire', 'Y llena el salón') }
+        { hoja: 5, de: 0.2, a: 0.42, lado: 'der', html: dato('Luz media', 'Ni sol directo ni sombra') },
+        { hoja: 7, de: 0.34, a: 0.56, lado: 'izq', html: dato('Riego cada 7 días', 'Cuando la tierra se seca') },
+        { hoja: 10, de: 0.5, a: 0.7, lado: 'der', html: dato('Hoja nueva', 'Cada tres semanas') },
+        { hoja: 12, de: 0.62, a: 0.8, lado: 'izq', html: dato('Purifica el aire', 'Y llena el salón') }
       ],
       alCambiar: (p) => {
-        poner(fases[0], 1 - suave(0.02, 0.1, p));
-        poner(fases[1], suave(0.13, 0.22, p) * (1 - suave(0.72, 0.8, p)));
-        poner(fases[2], suave(0.85, 0.95, p));
-        $('#hero-pista').style.opacity = (1 - suave(0, 0.05, p)).toFixed(3);
-        seccion.style.setProperty('--velo', ((1 - suave(0.03, 0.14, p)) + suave(0.8, 0.94, p)).toFixed(3));
-        const avance = suave(0.03, 0.78, p);
+        poner(fases[0], 1 - suave(0.01, 0.07, p));
+        poner(fases[1], suave(0.09, 0.16, p) * (1 - suave(0.8, 0.86, p)));
+        poner(fases[2], suave(0.88, 0.96, p));
+        poner(pista, 1 - suave(0, 0.04, p));
+        const velo = ((1 - suave(0.02, 0.1, p)) + suave(0.86, 0.95, p)).toFixed(2);
+        if (velo !== veloAntes) { veloAntes = velo; pegado.style.setProperty('--velo', velo); }
+        const avance = suave(0, 0.84, p);
         const s = Math.round(1 + avance * 51);
         if (s !== semana) {
           semana = s;
           $('#hero-semana').textContent = s;
-          $('#hero-cm').textContent = Math.round(30 + avance * 80);
+          $('#hero-cm').textContent = Math.round(12 + avance * 138);
           $('#hero-barra').style.width = `${avance * 100}%`;
         }
       }

@@ -125,7 +125,7 @@ em.portada__l { color: var(--terracota); animation-delay: .15s; }
 @keyframes flotar { 50% { transform: translateY(-10px); } }
 
 /* Portada viva: una monstera en 3D que crece con el scroll */
-.portada--viva { overflow: visible; overflow: clip; height: 330vh; background: linear-gradient(180deg, #f6f0e3, var(--crema) 60%, #e9e6d2); }
+.portada--viva { overflow: visible; overflow: clip; height: 215vh; background: linear-gradient(180deg, #f6f0e3, var(--crema) 60%, #e9e6d2); }
 .portada--viva::before { display: none; }
 .portada--viva.sin-3d { height: auto; }
 .portada__pegado { position: sticky; top: var(--cab-real, var(--cab-alto)); height: calc(100vh - var(--cab-real, var(--cab-alto))); height: calc(100svh - var(--cab-real, var(--cab-alto))); overflow: hidden; }
@@ -137,7 +137,7 @@ em.portada__l { color: var(--terracota); animation-delay: .15s; }
 .hero__lienzo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 1.2s .2s; }
 .lista .hero__lienzo { opacity: 1; }
 .hero__etiquetas { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.hero__etiqueta { position: absolute; left: 0; top: 0; opacity: 0; white-space: nowrap; padding: 9px 16px; border-radius: 16px; background: rgba(251, 248, 241, .92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 16px 32px -18px rgba(31, 58, 43, .6); will-change: transform, opacity; margin: 0 14px; }
+.hero__etiqueta { position: absolute; left: 0; top: 0; opacity: 0; white-space: nowrap; padding: 9px 16px; border-radius: 16px; background: rgba(251, 248, 241, .96); box-shadow: 0 16px 32px -18px rgba(31, 58, 43, .6); will-change: transform, opacity; margin: 0 14px; }
 .hero__etiqueta b { display: block; font-size: 14px; color: var(--verde); line-height: 1.2; }
 .hero__etiqueta small { display: block; font-size: 11px; color: var(--gris); line-height: 1.3; }
 .hero__fase { position: absolute; inset: 0; margin-inline: auto; z-index: 2; opacity: 0; visibility: hidden; display: flex; align-items: center; pointer-events: none; }
@@ -204,7 +204,7 @@ em.portada__l { color: var(--terracota); animation-delay: .15s; }
 .sala { position: relative; width: 100%; aspect-ratio: 5 / 4; }
 .sala::before { content: ''; position: absolute; inset: 4% 2% 0; border-radius: 50%; background: radial-gradient(ellipse at 50% 60%, rgba(255, 226, 160, .2), transparent 65%); pointer-events: none; }
 .sala__lienzo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
-.sala__lienzo.arrastrable { cursor: grab; }
+.sala__lienzo.arrastrable { cursor: grab; touch-action: none; }
 .sala__lienzo.arrastrable:active { cursor: grabbing; }
 .sala__chapa { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 1px; padding: 8px 16px 9px; border-radius: 16px; background: rgba(251, 248, 241, .96); color: var(--verde); box-shadow: 0 14px 30px -14px rgba(0, 0, 0, .6); pointer-events: none; white-space: nowrap; opacity: 0; transition: opacity .35s; will-change: transform; }
 .sala__chapa::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
@@ -543,7 +543,7 @@ em.portada__l { color: var(--terracota); animation-delay: .15s; }
   .test__paso { align-self: start; }
   .test__pregunta { margin-top: 16px; }
   .test__pregunta h3 { font-size: 24px; }
-  .portada--viva { height: 270vh; }
+  .portada--viva { height: 190vh; }
   .portada--viva .portada__grid { align-items: end; padding: 0 0 54px; }
   .portada--viva.sin-3d .portada__grid { padding: 28px 0 56px; }
   .portada--viva .portada__datos { display: none; }

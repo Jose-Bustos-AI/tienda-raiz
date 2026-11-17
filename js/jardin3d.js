@@ -319,7 +319,7 @@ export class HeroPlanta {
       el.className = 'hero__etiqueta';
       el.innerHTML = d.html;
       etiquetasEl.append(el);
-      return { ...d, el, punto: V3(0, 0, 0) };
+      return { ...d, el, punto: V3(0, 0, 0), ancho: el.offsetWidth + 20, visible: false };
     });
 
     this.progreso = 0; this.visto = 0; this.tiempo = 0;
@@ -369,7 +369,7 @@ export class HeroPlanta {
     this.antes = ahora;
     if (!this.visible) return;
     this.tiempo += dt;
-    this.visto += (this.progreso - this.visto) * (this.reducir ? 1 : 1 - Math.exp(-dt * 7));
+    this.visto += (this.progreso - this.visto) * (this.reducir ? 1 : 1 - Math.exp(-dt * 16));
     this.ratonVisto.x += (this.raton.x - this.ratonVisto.x) * (1 - Math.exp(-dt * 3));
     this.ratonVisto.y += (this.raton.y - this.ratonVisto.y) * (1 - Math.exp(-dt * 3));
     const p = this.visto;
@@ -377,21 +377,23 @@ export class HeroPlanta {
   }
 
   colocar(p) {
-    const t = mezcla(0.3, 1, suave(0.03, 0.78, p));
+    const t = mezcla(0.1, 1, suave(0, 0.84, p));
     crecer(this.planta, t, this.reducir ? 0 : this.tiempo);
+    const talla = suave(0.1, 1, t), esc = mezcla(0.5, 1.32, talla);
+    this.planta.grupo.scale.setScalar(esc);
     const giro = -0.55 + p * 1.5 + this.ratonVisto.x * 0.12;
     // En móvil, mientras crece no hay texto debajo: la planta baja al centro y se acerca
-    const conTexto = (1 - suave(0.03, 0.14, p)) + suave(0.8, 0.94, p);
+    const conTexto = (1 - suave(0.02, 0.1, p)) + suave(0.86, 0.95, p);
     if (!this.ancha && this.w) { this.camara.setViewOffset(this.w, this.h, 0, this.h * mezcla(0.04, 0.2, conTexto), this.w, this.h); }
-    const d = this.distancia * mezcla(0.7, 1, suave(0.3, 1, t)) * (this.ancha ? 1 : mezcla(0.8, 1, conTexto));
-    const mira = mezcla(0.42, 0.72, suave(0.3, 1, t));
-    this.camara.position.set(Math.sin(giro) * d, mira + 0.55 + this.ratonVisto.y * 0.1, Math.cos(giro) * d);
+    const d = this.distancia * mezcla(0.42, 1.3, talla) * (this.ancha ? 1 : mezcla(0.8, 1, conTexto));
+    const mira = mezcla(0.2, 0.95, talla);
+    this.camara.position.set(Math.sin(giro) * d, mira + mezcla(0.25, 0.7, talla) + this.ratonVisto.y * 0.1, Math.cos(giro) * d);
     this.camara.lookAt(0, mira, 0);
     const a = mezcla(-0.9, 1.6, p);
     this.sol.position.set(Math.sin(a) * 4, mezcla(3, 5, Math.sin(p * Math.PI)), Math.cos(a) * 4 + 1.5);
     this.sol.color.setHSL(0.11, 0.9, mezcla(0.74, 0.84, Math.sin(p * Math.PI)));
     // la sombra del suelo crece con la planta y se aparta del sol
-    const s = mezcla(0.36, 0.78, suave(0.3, 1, t));
+    const s = mezcla(0.22, 1.02, talla);
     this.sombra.scale.set(s * 1.2, s, 1);
     this.sombra.position.set(-Math.sin(a) * 0.22 * s, 0.004, -Math.cos(a) * 0.12 * s);
     this.sombra.rotation.z = a;
@@ -403,10 +405,11 @@ export class HeroPlanta {
     for (const e of this.etiquetas) {
       const hoja = this.planta.hojas[e.hoja];
       const v = suave(e.de, e.de + 0.06, p) * (1 - suave(e.a, e.a + 0.06, p));
-      if (v < 0.01 || !hoja.pivote.visible) { e.el.style.opacity = 0; continue; }
+      if (v < 0.01 || !hoja.pivote.visible) { if (e.visible) { e.el.style.opacity = 0; e.visible = false; } continue; }
+      e.visible = true;
       hoja.punta.getWorldPosition(e.punto).project(this.camara);
       e.el.style.opacity = v.toFixed(3);
-      const ancho = e.el.offsetWidth + 20, izq = e.lado === 'izq';
+      const ancho = e.ancho, izq = e.lado === 'izq';
       const x = sujetar((e.punto.x + 1) / 2 * this.w, izq ? ancho : 0, this.w - (izq ? 0 : ancho));
       e.el.style.transform = `translate(${x.toFixed(1)}px, ${((1 - e.punto.y) / 2 * this.h).toFixed(1)}px) translate(${izq ? '-100%' : '0'}, -50%)`;
     }
@@ -472,7 +475,7 @@ export class Habitacion3D {
     this.camara = new THREE.PerspectiveCamera(28, 1, 0.1, 80);
 
     // valores actuales (v) que persiguen a sus objetivos (o)
-    this.v = { x: X0 + 2 * PASO_M, esc: 0.9, tab: 0, gato: 0, crece: 0.62, fuerza: 6, animo: 0, az: 0.34, el: 0.34, zoom: 1.25 };
+    this.v = { x: X0 + 2 * PASO_M, z: Z_PLANTA, esc: 0.9, tab: 0, gato: 0, crece: 0.62, fuerza: 6, animo: 0, az: 0.34, el: 0.34, zoom: 1.25 };
     this.o = { ...this.v, zoom: 1 };
     this.dir = SOLES.sur.dir.clone().normalize(); this.dirO = this.dir.clone();
     this.foco = V3(2.75, 1.05, 1.5); this.focoO = this.foco.clone();
@@ -484,15 +487,39 @@ export class Habitacion3D {
     this.construirHabitantes();
 
     this.rayo = new THREE.Raycaster();
-    // plano vertical que pasa por la línea por la que se mueve la planta: da igual por dónde se agarre
-    this.plano = new THREE.Plane(V3(0, 0, 1), -Z_PLANTA);
-    this.abajo = (e) => { if (!this.arrastrable) return; this.arrastrando = true; lienzo.setPointerCapture?.(e.pointerId); this.mover(e); };
-    this.mover = (e) => {
-      if (!this.arrastrando) return;
+    // La planta se arrastra por el suelo: hacia la ventana, hacia el fondo o a un rincón
+    this.plano = new THREE.Plane(V3(0, 1, 0), 0);
+    const enSuelo = (e) => {
       const r = lienzo.getBoundingClientRect();
       this.rayo.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camara);
-      const punto = this.rayo.ray.intersectPlane(this.plano, V3(0, 0, 0));
-      if (punto) this.alMover?.(Math.round(sujetar((punto.x - X0) / PASO_M, 0, 5) * 10) / 10);
+      return this.rayo.ray.intersectPlane(this.plano, V3(0, 0, 0));
+    };
+    this.agarre = V3(0, 0, 0);
+    this.abajo = (e) => {
+      if (!this.arrastrable) return;
+      const punto = enSuelo(e);
+      if (!punto) return;
+      this.arrastrando = true;
+      lienzo.setPointerCapture?.(e.pointerId);
+      // si se agarra la planta (o sus hojas), no salta: se mueve desde donde está
+      this.agarre.set(this.v.x - punto.x, 0, this.v.z - punto.z);
+      if (this.agarre.length() > 1.3) this.agarre.set(0, 0, 0);
+      this.mover(e);
+    };
+    this.mover = (e) => {
+      if (!this.arrastrando) return;
+      const punto = enSuelo(e);
+      if (!punto) return;
+      let x = sujetar(punto.x + this.agarre.x, X0, X0 + 5 * PASO_M), z = sujetar(punto.z + this.agarre.z, 0.4, SALA.fondo - 0.3);
+      // no se mete en el sofá ni en la mesita
+      if (x > 1.75 && x < 4.6 && z < 1.25) z = 1.25;
+      const dx = x - 4.98, dz = z - 0.98, dm = Math.hypot(dx, dz);
+      if (dm < 0.6) { x = 4.98 + (dx / (dm || 1)) * 0.6; z = 0.98 + (dz / (dm || 1)) * 0.6; x = Math.min(x, X0 + 5 * PASO_M); }
+      this.o.z = z;
+      const metros = Math.round(((x - X0) / PASO_M) * 10) / 10;
+      // fuera del frente de la ventana llega menos luz: cuenta como estar más lejos
+      const lado = Math.max(0, Math.abs(z - Z_PLANTA) - 0.8) / PASO_M;
+      this.alMover?.(metros, Math.round((Math.hypot(metros, lado) - metros) * 10) / 10, z);
     };
     this.arriba = () => { this.arrastrando = false; };
     lienzo.addEventListener('pointerdown', this.abajo);
@@ -644,7 +671,7 @@ export class Habitacion3D {
     const e = this.escena;
     // La planta protagonista, con un taburete para cuando es pequeña
     this.principal = new THREE.Group();
-    this.principal.position.set(this.v.x, 0, Z_PLANTA);
+    this.principal.position.set(this.v.x, 0, this.v.z);
     this.planta = plantaMonstera(3);
     this.portaPlanta = new THREE.Group();
     this.portaPlanta.add(this.planta.grupo);
@@ -713,8 +740,9 @@ export class Habitacion3D {
   }
 
   /* ---- API ---- */
-  luz(metros, orientacion, nivel) {
+  luz(metros, orientacion, nivel, z) {
     this.o.x = X0 + metros * PASO_M;
+    if (typeof z === 'number') this.o.z = z;
     const s = SOLES[orientacion] || SOLES.sur;
     this.dirO.copy(s.dir).normalize();
     this.o.fuerza = s.fuerza;
@@ -758,7 +786,9 @@ export class Habitacion3D {
     this.tiempo += dt;
     const k = this.reducir ? 1 : 1 - Math.exp(-dt * 5), lento = this.reducir ? 1 : 1 - Math.exp(-dt * 2.6);
     const v = this.v, o = this.o;
-    v.x += (o.x - v.x) * (this.arrastrando ? 1 - Math.exp(-dt * 16) : k);
+    const kx = this.arrastrando ? 1 - Math.exp(-dt * 16) : k;
+    v.x += (o.x - v.x) * kx;
+    v.z += (o.z - v.z) * kx;
     for (const c of ['esc', 'tab', 'gato', 'fuerza', 'animo']) v[c] += (o[c] - v[c]) * k;
     v.crece += (o.crece - v.crece) * lento;
     this.dir.lerp(this.dirO, k).normalize();
@@ -780,7 +810,7 @@ export class Habitacion3D {
     this.manchaMat.opacity = 0.085 * v.fuerza;
     // la planta al sol proyecta una sombra alargada
     const alcance = this.dir.x * (VENTANA.y2 / -this.dir.y);
-    const alSol = sujetar(v.fuerza / 3) * (1 - suave(alcance - 0.5, alcance + 0.2, v.x));
+    const alSol = sujetar(v.fuerza / 3) * (1 - suave(alcance - 0.5, alcance + 0.2, v.x)) * suave(VENTANA.z1 - 0.5, VENTANA.z1, v.z) * (1 - suave(VENTANA.z2, VENTANA.z2 + 0.5, v.z));
     this.sombraPlanta.position.x = 0.3 * alSol * v.esc;
     this.sombraPlanta.material.opacity = mezcla(0.4, 0.62, alSol);
     this.alSol = alSol;
@@ -788,6 +818,7 @@ export class Habitacion3D {
     // Planta protagonista
     const alturaTab = 0.45 * v.tab;
     this.principal.position.x = v.x;
+    this.principal.position.z = v.z;
     this.portaPlanta.position.y = alturaTab;
     this.portaPlanta.scale.setScalar(v.esc);
     this.taburete.scale.set(1, Math.max(v.tab, 0.001), 1);
@@ -819,7 +850,7 @@ export class Habitacion3D {
         regando = true;
         const entra = suave(0, 0.35, tau) * (1 - suave(dura, dura + 0.4, tau));
         this.regadera.visible = true;
-        this.regadera.position.set(v.x - 0.42 * Math.max(v.esc, 0.6), cima + 0.28 + (1 - entra) * 0.3, Z_PLANTA + 0.05);
+        this.regadera.position.set(v.x - 0.42 * Math.max(v.esc, 0.6), cima + 0.28 + (1 - entra) * 0.3, v.z + 0.05);
         this.regadera.rotation.z = -0.75 * entra;
         this.regadera.scale.setScalar(Math.max(entra, 0.001) * 1.15);
         const boca = V3(0.27, 0.1, 0).applyEuler(this.regadera.rotation).multiplyScalar(1.15).add(this.regadera.position);
@@ -836,7 +867,7 @@ export class Habitacion3D {
 
     // Cámara
     const vis = this.vista;
-    if (vis.foco) this.focoO.set(...vis.foco); else this.focoO.set(v.x, alturaTab + vis.alto * Math.max(v.esc, 0.6), Z_PLANTA);
+    if (vis.foco) this.focoO.set(...vis.foco); else this.focoO.set(v.x, alturaTab + vis.alto * Math.max(v.esc, 0.6), v.z);
     o.az = vis.az + (vis.pasea && !this.reducir ? Math.sin(this.tiempo * 0.22) * 0.3 : 0); o.el = vis.el; o.zoom = vis.zoom;
     for (const c of ['az', 'el', 'zoom']) v[c] += (o[c] - v[c]) * lento;
     this.foco.lerp(this.focoO, lento);
@@ -846,7 +877,7 @@ export class Habitacion3D {
     this.renderer.render(this.escena, this.camara);
 
     if (this.chapa) {
-      const p = V3(v.x, cima + 0.12, Z_PLANTA).project(this.camara);
+      const p = V3(v.x, cima + 0.12, v.z).project(this.camara);
       this.chapa.style.transform = `translate(${((p.x + 1) / 2 * this.w).toFixed(1)}px, ${((1 - p.y) / 2 * this.h).toFixed(1)}px) translate(-50%, -100%)`;
     }
   }
